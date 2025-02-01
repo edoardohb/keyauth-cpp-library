@@ -1,6 +1,6 @@
 #include <includes.hpp>
-#include <xorstr.hpp>
-#include <random>
+
+#pragma comment(lib, "libcurl.lib")
 
 #define CURL_STATICLIB 
 
@@ -15,20 +15,15 @@ namespace KeyAuth {
 	class api {
 	public:
 
-		std::string name, ownerid, version, url, path; 
-		static bool debug;
+		std::string name, ownerid, secret, version, url, path;
 
-		api(std::string name, std::string ownerid, std::string version, std::string url, std::string path, bool debugParameter = false) 
-		: name(name), ownerid(ownerid), version(version), url(url), path(path)
-		{
-		    setDebug(debugParameter);
-		}
+		api(std::string name, std::string ownerid, std::string secret, std::string version, std::string url, std::string path) : name(name), ownerid(ownerid), secret(secret), version(version), url(url), path(path) {}
 
 		void ban(std::string reason = "");
 		void init();
-		void check(bool check_paid = false);
+		void check();
 		void log(std::string msg);
-		void license(std::string key, std::string code = "");
+		void license(std::string key);
 		std::string var(std::string varid);
 		std::string webhook(std::string id, std::string params, std::string body = "", std::string contenttype = "");
 		void setvar(std::string var, std::string vardata);
@@ -37,7 +32,7 @@ namespace KeyAuth {
 		void web_login();
 		void button(std::string value);
 		void upgrade(std::string username, std::string key);
-		void login(std::string username, std::string password, std::string code = "");
+		void login(std::string username, std::string password);
 		std::vector<unsigned char> download(std::string fileid);
 		void regstr(std::string username, std::string password, std::string key, std::string email = "");
 		void chatget(std::string channel);
@@ -84,82 +79,58 @@ namespace KeyAuth {
 			std::vector<channel_struct> channeldata;
 			bool success{};
 			std::string message;
-			bool isPaid{};
 		};
-
-		bool activate = false;
-		class Tfa {
-		public:
-			std::string secret;
-			std::string link;
-			Tfa& handleInput(KeyAuth::api& apiInstance);
-		private:
-			void QrCode();
-		};
-
-		Tfa& enable2fa(std::string code = "");
-		Tfa& disable2fa(std::string code = "");
 
 		userdata user_data;
 		appdata app_data;
 		responsedata response;
-		Tfa tfa;
 	private:
 		std::string sessionid, enckey;
 
 		static std::string req(std::string data, std::string url);
 
-		static void debugInfo(std::string data, std::string url, std::string response, std::string headers);
-
-		static void setDebug(bool value);
-		
 
 		void load_user_data(nlohmann::json data) {
-			api::user_data.username = data[XorStr("username")];
-			api::user_data.ip = data[XorStr("ip")];
-			if (data[XorStr("hwid")].is_null()) {
-				api::user_data.hwid = XorStr("none");
+			api::user_data.username = data["username"];
+			api::user_data.ip = data["ip"];
+			if (data["hwid"].is_null()) {
+				api::user_data.hwid = "none";
 			}
 			else {
-				api::user_data.hwid = data[XorStr("hwid")];
+				api::user_data.hwid = data["hwid"];
 			}
-			api::user_data.createdate = data[XorStr("createdate")];
-			api::user_data.lastlogin = data[XorStr("lastlogin")];
+			api::user_data.createdate = data["createdate"];
+			api::user_data.lastlogin = data["lastlogin"];
 
-			for (int i = 0; i < data[XorStr("subscriptions")].size(); i++) { // Prompto#7895 & stars#2297 was here
+			for (int i = 0; i < data["subscriptions"].size(); i++) { // Prompto#7895 & stars#2297 was here
 				subscriptions_class subscriptions;
-				subscriptions.name = data[XorStr("subscriptions")][i][XorStr("subscription")];
-				subscriptions.expiry = data[XorStr("subscriptions")][i][XorStr("expiry")];
+				subscriptions.name = data["subscriptions"][i]["subscription"];
+				subscriptions.expiry = data["subscriptions"][i]["expiry"];
 				api::user_data.subscriptions.emplace_back(subscriptions);
 			}
 		}
 
 		void load_app_data(nlohmann::json data) {
-			api::app_data.numUsers = data[XorStr("numUsers")];
-			api::app_data.numOnlineUsers = data[XorStr("numOnlineUsers")];
-			api::app_data.numKeys = data[XorStr("numKeys")];
-			api::app_data.version = data[XorStr("version")];
-			api::app_data.customerPanelLink = data[XorStr("customerPanelLink")];
+			api::app_data.numUsers = data["numUsers"];
+			api::app_data.numOnlineUsers = data["numOnlineUsers"];
+			api::app_data.numKeys = data["numKeys"];
+			api::app_data.version = data["version"];
+			api::app_data.customerPanelLink = data["customerPanelLink"];
 		}
 
 		void load_response_data(nlohmann::json data) {
-			api::response.success = data[XorStr("success")];
+			api::response.success = data["success"];
 			api::response.message = data["message"];
-
-			if (data.contains(XorStr("role").c_str()) && data[XorStr("role")] != XorStr("tester").c_str() && data[XorStr("role")] != XorStr("not_checked").c_str()) {
-				api::response.isPaid = true;
-			}
 		}
 
 		void load_channel_data(nlohmann::json data) {
-			api::response.success = data["success"]; // intentional. Possibly trick a reverse engineer into thinking this string is for login function
+			api::response.success = data["success"];
 			api::response.message = data["message"];
-			api::response.channeldata.clear(); //If you do not delete the data before pushing it, the data will be repeated. github.com/TTakaTit
 			for (const auto sub : data["messages"]) {
 
-				std::string authoroutput = sub[XorStr("author")];
+				std::string authoroutput = sub["author"];
 				std::string messageoutput = sub["message"];
-				int timestamp = sub[XorStr("timestamp")]; std::string timestampoutput = std::to_string(timestamp);
+				int timestamp = sub["timestamp"]; std::string timestampoutput = std::to_string(timestamp);
 				authoroutput.erase(remove(authoroutput.begin(), authoroutput.end(), '"'), authoroutput.end());
 				messageoutput.erase(remove(messageoutput.begin(), messageoutput.end(), '"'), messageoutput.end());
 				timestampoutput.erase(remove(timestampoutput.begin(), timestampoutput.end(), '"'), timestampoutput.end());
